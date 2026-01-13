@@ -27,8 +27,30 @@ HTML 이메일 템플릿을 관리하고 다중 수신자에게 메일을 발송
 
 4. **웹 브라우저 접속**
    ```
-   http://localhost:5000
+   http://localhost:5001
    ```
+
+## 개발 환경에서 MailHog로 테스트하기
+
+MailHog는 개발용 가짜 SMTP 서버로, 실제 메일을 외부로 발송하지 않고 웹 UI에서 수신함을 확인할 수 있습니다.
+
+1. **MailHog 설치/실행**
+   ```bash
+   brew install mailhog
+   mailhog
+   ```
+
+2. **웹메일 발송 시스템 SMTP 설정**
+   - **SMTP 서버**: `localhost`
+   - **포트**: `1025`
+   - **SMTP 아이디/비밀번호**: 비워두기
+   - **발신자 이메일**: 예) `test@localhost`
+
+3. **MailHog 수신함 확인**
+   - 브라우저에서 아래로 접속
+     - `http://localhost:8025`
+
+자세한 로컬 SMTP 설정은 `setup_local_smtp.md` 참고.
 
 ## 사용 방법
 
@@ -85,8 +107,13 @@ webmailsender/
 
 - **Flask**: 웹 프레임워크
 - **CodeMirror**: 코드 에디터 (HTML 편집용)
-- **Tailwind CSS**: UI 스타일링
+- **Tabler**: UI 스타일링
 - **Font Awesome**: 아이콘
+
+## 발송 결과 저장 방식
+
+- 발송 결과는 `data/results/*.json` 파일로 저장됩니다.
+- [발송 결과] 화면은 해당 JSON 파일들을 읽어서 목록/상세 화면을 구성합니다.
 
 ## 보안 주의사항
 

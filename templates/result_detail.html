@@ -16,6 +16,12 @@
                 <i class="fa fa-arrow-left"></i>
                 목록으로
             </a>
+            {% if result.can_retry %}
+                <button type="button" class="btn btn-warning" onclick="retryRun()">
+                    <i class="fa fa-refresh"></i>
+                    미발송/실패 재발송
+                </button>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -38,8 +44,14 @@
                     </div>
                     <div class="col-12 col-md-6">
                         <div class="text-secondary">총 수신자</div>
-                        <div class="fw-semibold">{{ result.recipients|length }}명</div>
+                        <div class="fw-semibold">{{ (result.total_count if result.total_count is defined else (result.recipients|length)) }}명</div>
                     </div>
+                    {% if result.pending_count is defined %}
+                        <div class="col-12 col-md-6">
+                            <div class="text-secondary">미발송</div>
+                            <div class="fw-semibold">{{ result.pending_count }}명</div>
+                        </div>
+                    {% endif %}
                     <div class="col-12 col-md-6">
                         <div class="text-secondary">발송 상태</div>
                         <div class="fw-semibold">
@@ -106,31 +118,34 @@
             </div>
             <div class="card-body">
                 <div class="list-group" style="max-height: 24rem; overflow-y: auto;">
-                    {% for recipient in result.recipients %}
-                        {% set is_success = true %}
-                        {% for error in result.errors %}
-                            {% if error.startswith(recipient + ":") %}
-                                {% set is_success = false %}
-                                <div class="list-group-item">
-                                    <div class="d-flex justify-content-between gap-2">
-                                        <div class="fw-semibold">{{ recipient }}</div>
-                                        <div class="text-danger">{{ error.split(":")[1] }}</div>
-                                    </div>
-                                </div>
-                            {% endif %}
-                        {% endfor %}
-                        {% if is_success %}
+                    {% if result.recipient_rows is defined %}
+                        {% for row in result.recipient_rows %}
                             <div class="list-group-item">
                                 <div class="d-flex justify-content-between align-items-center gap-2">
-                                    <div class="fw-semibold">{{ recipient }}</div>
-                                    <div class="text-success">
-                                        <i class="fa fa-check-circle"></i>
-                                        발송 성공
-                                    </div>
+                                    <div class="fw-semibold">{{ row.recipient_email }}</div>
+                                    {% if row.status == 'sent' %}
+                                        <div class="text-success">
+                                            <i class="fa fa-check-circle"></i>
+                                            발송 성공
+                                        </div>
+                                    {% elif row.status == 'pending' %}
+                                        <div class="text-secondary">
+                                            <i class="fa fa-clock-o"></i>
+                                            미발송
+                                        </div>
+                                    {% else %}
+                                        <div class="text-danger">{{ row.last_error }}</div>
+                                    {% endif %}
                                 </div>
                             </div>
-                        {% endif %}
-                    {% endfor %}
+                        {% endfor %}
+                    {% else %}
+                        {% for recipient in result.recipients %}
+                            <div class="list-group-item">
+                                <div class="fw-semibold">{{ recipient }}</div>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -155,4 +170,28 @@
         </div>
     {% endif %}
 </div>
+
+<script>
+    async function retryRun() {
+        const resultId = `{{ result.id }}`;
+        if (!resultId) return;
+
+        if (!confirm('미발송/실패 건만 재발송하시겠습니까? (이미 성공한 수신자는 제외됩니다)')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/result/${resultId}/retry`, { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) {
+                showAlert(data.error || '재발송에 실패했습니다.', 'error');
+                return;
+            }
+            showAlert(data.message || '재발송이 완료되었습니다.', 'success');
+            setTimeout(() => window.location.reload(), 600);
+        } catch (e) {
+            showAlert('재발송 요청 중 오류가 발생했습니다.', 'error');
+        }
+    }
+</script>
 {% endblock %}

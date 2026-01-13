@@ -10,4 +10,5 @@ venv/
 data/config.json
 data/results/
 data/templates/
+data/app.db
 backup/

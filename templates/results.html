@@ -40,7 +40,7 @@
                         <tr>
                             <td class="fw-semibold">{{ result.title }}</td>
                             <td class="text-secondary">{{ result.sent_at[:10] }} {{ result.sent_at[11:19] }}</td>
-                            <td>{{ result.recipients|length }}명</td>
+                            <td>{{ (result.total_count if result.total_count is defined else (result.recipients|length)) }}명</td>
                             <td><span class="text-success fw-semibold">{{ result.success_count }}</span></td>
                             <td><span class="text-danger fw-semibold">{{ result.fail_count }}</span></td>
                             <td>

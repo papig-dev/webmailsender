@@ -5,6 +5,7 @@ from email.mime.multipart import MIMEMultipart
 import json
 import os
 import re
+import sqlite3
 from datetime import datetime
 import uuid
 
@@ -15,10 +16,254 @@ app.secret_key = 'your-secret-key-here'
 DATA_DIR = 'data'
 TEMPLATES_DIR = os.path.join(DATA_DIR, 'templates')
 RESULTS_DIR = os.path.join(DATA_DIR, 'results')
+DB_FILE = os.path.join(DATA_DIR, 'app.db')
 
 # 디렉토리 생성
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat()
+
+
+def get_db():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
+    return conn
+
+
+def init_db():
+    conn = get_db()
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS send_runs (
+            id TEXT PRIMARY KEY,
+            template_id TEXT,
+            template_title TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            from_email TEXT NOT NULL,
+            html_content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            status TEXT NOT NULL,
+            total_count INTEGER NOT NULL DEFAULT 0,
+            success_count INTEGER NOT NULL DEFAULT 0,
+            fail_count INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS send_recipients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            recipient_email TEXT NOT NULL,
+            status TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            sent_at TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES send_runs(id) ON DELETE CASCADE,
+            UNIQUE(run_id, recipient_email)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_send_runs_created_at ON send_runs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_send_recipients_run_status ON send_recipients(run_id, status);
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def create_send_run(template_id: str, template: dict, from_email: str, recipients: list[str]) -> str:
+    run_id = str(uuid.uuid4())
+    now = _now_iso()
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO send_runs (
+            id, template_id, template_title, subject, from_email, html_content,
+            created_at, started_at, status, total_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            template_id,
+            template.get('title') or template_id,
+            template.get('subject') or '',
+            from_email,
+            template.get('html_content') or '',
+            now,
+            now,
+            'running',
+            len(recipients),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return run_id
+
+
+def upsert_run_recipients(run_id: str, recipients: list[str]):
+    if not recipients:
+        return
+    now = _now_iso()
+    rows = [(run_id, email, 'pending', now) for email in recipients]
+    conn = get_db()
+    conn.executemany(
+        """
+        INSERT INTO send_recipients (run_id, recipient_email, status, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(run_id, recipient_email) DO NOTHING
+        """,
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_recipient_status(run_id: str, recipient: str, status: str, error: str | None = None, sent_at: str | None = None):
+    now = _now_iso()
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE send_recipients
+           SET status = ?,
+               attempt_count = attempt_count + 1,
+               last_error = ?,
+               sent_at = ?,
+               updated_at = ?
+         WHERE run_id = ? AND recipient_email = ?
+        """,
+        (status, error, sent_at, now, run_id, recipient),
+    )
+    conn.commit()
+    conn.close()
+
+
+def refresh_run_counts(run_id: str):
+    conn = get_db()
+    cur = conn.execute(
+        """
+        SELECT
+          SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS success_count,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS fail_count,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+          COUNT(*) AS total_count
+        FROM send_recipients
+        WHERE run_id = ?
+        """,
+        (run_id,),
+    )
+    row = cur.fetchone() or {}
+    success_count = int(row['success_count'] or 0)
+    fail_count = int(row['fail_count'] or 0)
+    total_count = int(row['total_count'] or 0)
+
+    conn.execute(
+        """
+        UPDATE send_runs
+           SET total_count = ?,
+               success_count = ?,
+               fail_count = ?
+         WHERE id = ?
+        """,
+        (total_count, success_count, fail_count, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def mark_run_finished(run_id: str, status: str = 'finished'):
+    now = _now_iso()
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE send_runs
+           SET finished_at = ?,
+               status = ?
+         WHERE id = ?
+        """,
+        (now, status, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def fetch_run_summaries() -> list[dict]:
+    conn = get_db()
+    cur = conn.execute(
+        """
+        SELECT id,
+               template_title AS title,
+               COALESCE(finished_at, started_at, created_at) AS sent_at,
+               total_count,
+               success_count,
+               fail_count,
+               status
+          FROM send_runs
+         ORDER BY created_at DESC
+        """
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def fetch_run_detail(run_id: str) -> dict | None:
+    conn = get_db()
+    run = conn.execute(
+        """
+        SELECT id,
+               template_id,
+               template_title AS title,
+               subject,
+               from_email,
+               html_content,
+               created_at,
+               started_at,
+               finished_at,
+               status,
+               total_count,
+               success_count,
+               fail_count
+          FROM send_runs
+         WHERE id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+    if not run:
+        conn.close()
+        return None
+
+    rec_cur = conn.execute(
+        """
+        SELECT recipient_email, status, last_error, attempt_count, sent_at
+          FROM send_recipients
+         WHERE run_id = ?
+         ORDER BY id ASC
+        """,
+        (run_id,),
+    )
+    recipient_rows = [dict(r) for r in rec_cur.fetchall()]
+    conn.close()
+
+    errors = []
+    for r in recipient_rows:
+        if r.get('status') == 'failed' and r.get('last_error'):
+            errors.append(f"{r['recipient_email']}: {r['last_error']}")
+
+    pending_count = sum(1 for r in recipient_rows if r.get('status') == 'pending')
+
+    out = dict(run)
+    out['sent_at'] = out.get('finished_at') or out.get('started_at') or out.get('created_at')
+    out['recipients'] = [r['recipient_email'] for r in recipient_rows]
+    out['recipient_rows'] = recipient_rows
+    out['errors'] = errors
+    out['pending_count'] = pending_count
+    out['can_retry'] = True
+    return out
 
 # 설정 파일
 CONFIG_FILE = os.path.join(DATA_DIR, 'config.json')
@@ -53,6 +298,9 @@ def parse_email_list(value: str) -> list[str]:
         return []
     parts = re.split(r"[\n,;]+", value)
     return [p.strip() for p in parts if p and p.strip()]
+
+
+init_db()
 
 def get_template_list():
     """템플릿 목록 가져오기"""
@@ -251,65 +499,167 @@ def send_email():
     # 수신자 목록 파싱
     recipients = [email.strip() for email in recipients_text.split('\n') if email.strip()]
     
-    # 메일 발송
+    # 메일 발송(run 단위로 DB 저장)
+    from_email = template.get('from_email') or config['from_email']
+    run_id = create_send_run(template_id, template, from_email, recipients)
+    upsert_run_recipients(run_id, recipients)
+
     success_count = 0
     fail_count = 0
     errors = []
-    
+
     try:
         server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
-        
+
         # 인증이 필요한 경우에만 로그인
         if config.get('smtp_user') and config.get('smtp_password'):
             server.starttls()
             server.login(config['smtp_user'], config['smtp_password'])
-        
+
         for recipient in recipients:
             try:
                 msg = MIMEMultipart('alternative')
                 msg['Subject'] = template['subject']
-                msg['From'] = template.get('from_email') or config['from_email']
+                msg['From'] = from_email
                 msg['To'] = recipient
-                
+
                 html_part = MIMEText(template['html_content'], 'html', 'utf-8')
                 msg.attach(html_part)
-                
+
                 server.send_message(msg)
                 success_count += 1
+                update_recipient_status(run_id, recipient, 'sent', error=None, sent_at=_now_iso())
             except Exception as e:
                 fail_count += 1
-                errors.append(f"{recipient}: {str(e)}")
-        
+                err = str(e)
+                errors.append(f"{recipient}: {err}")
+                update_recipient_status(run_id, recipient, 'failed', error=err, sent_at=None)
+
         server.quit()
-        
-        # 결과 저장
-        result_id = str(uuid.uuid4())
-        save_send_result(result_id, template['title'], recipients, success_count, fail_count, errors)
-        
+
+        refresh_run_counts(run_id)
+        mark_run_finished(run_id, status='finished')
+
+        return jsonify({
+            'success': True,
+            'result_id': run_id,
+            'success_count': success_count,
+            'fail_count': fail_count,
+            'errors': errors
+        })
+
+    except Exception as e:
+        refresh_run_counts(run_id)
+        mark_run_finished(run_id, status='failed')
+        return jsonify({'error': f'메일 발송 실패: {str(e)}', 'result_id': run_id}), 500
+
+
+@app.route('/result/<result_id>/retry', methods=['POST'])
+def retry_result(result_id):
+    """실패/미발송(pending)만 재발송 (같은 run 내 중복 발송 방지)"""
+    detail = fetch_run_detail(result_id)
+    if not detail:
+        return jsonify({'error': '결과를 찾을 수 없습니다.'}), 404
+
+    config = load_config()
+
+    # 재발송 대상: pending/failed
+    targets = [r['recipient_email'] for r in detail.get('recipient_rows', []) if r.get('status') in ('pending', 'failed')]
+    if not targets:
+        return jsonify({'success': True, 'message': '재발송 대상이 없습니다.'})
+
+    # run 상태 갱신
+    conn = get_db()
+    conn.execute(
+        """UPDATE send_runs SET status = ?, started_at = COALESCE(started_at, ?) WHERE id = ?""",
+        ('running', _now_iso(), result_id),
+    )
+    conn.commit()
+    conn.close()
+
+    success_count = 0
+    fail_count = 0
+    errors = []
+
+    try:
+        server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
+        if config.get('smtp_user') and config.get('smtp_password'):
+            server.starttls()
+            server.login(config['smtp_user'], config['smtp_password'])
+
+        for recipient in targets:
+            try:
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = detail['subject']
+                msg['From'] = detail['from_email']
+                msg['To'] = recipient
+
+                html_part = MIMEText(detail['html_content'], 'html', 'utf-8')
+                msg.attach(html_part)
+
+                server.send_message(msg)
+                success_count += 1
+                update_recipient_status(result_id, recipient, 'sent', error=None, sent_at=_now_iso())
+            except Exception as e:
+                fail_count += 1
+                err = str(e)
+                errors.append(f"{recipient}: {err}")
+                update_recipient_status(result_id, recipient, 'failed', error=err, sent_at=None)
+
+        server.quit()
+
+        refresh_run_counts(result_id)
+        mark_run_finished(result_id, status='finished')
+
         return jsonify({
             'success': True,
             'result_id': result_id,
             'success_count': success_count,
             'fail_count': fail_count,
-            'errors': errors
+            'errors': errors,
+            'message': f'재발송 완료 (성공 {success_count} / 실패 {fail_count})'
         })
-        
     except Exception as e:
-        return jsonify({'error': f'메일 발송 실패: {str(e)}'}), 500
+        refresh_run_counts(result_id)
+        mark_run_finished(result_id, status='failed')
+        return jsonify({'error': f'재발송 실패: {str(e)}'}), 500
 
 @app.route('/results')
 def results():
     """발송 결과 목록"""
-    results = get_send_results()
+    db_results = fetch_run_summaries()
+    results = db_results if db_results else get_send_results()
     return render_template('results.html', results=results)
 
 @app.route('/result/<result_id>')
 def view_result(result_id):
     """발송 결과 상세 보기"""
+    detail = fetch_run_detail(result_id)
+    if detail:
+        return render_template('result_detail.html', result=detail)
+
     filepath = os.path.join(RESULTS_DIR, f'{result_id}.json')
     if os.path.exists(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             result = json.load(f)
+
+        # 기존 JSON 결과도 동일한 UI 구조로 맞추기
+        error_map = {}
+        for e in result.get('errors', []):
+            if ':' in e:
+                k, v = e.split(':', 1)
+                error_map[k.strip()] = v.strip()
+
+        recipient_rows = []
+        for email in result.get('recipients', []):
+            if email in error_map:
+                recipient_rows.append({'recipient_email': email, 'status': 'failed', 'last_error': error_map[email], 'attempt_count': 1, 'sent_at': None})
+            else:
+                recipient_rows.append({'recipient_email': email, 'status': 'sent', 'last_error': None, 'attempt_count': 1, 'sent_at': None})
+        result['recipient_rows'] = recipient_rows
+        result['pending_count'] = 0
+        result['total_count'] = len(result.get('recipients', []))
+        result['can_retry'] = False
         return render_template('result_detail.html', result=result)
     flash('결과를 찾을 수 없습니다.')
     return redirect(url_for('results'))
