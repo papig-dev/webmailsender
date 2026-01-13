@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}{{ '템플릿 편집' if template else '새 템플릿 생성' }} - 웹메일 발송 시스템{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                <i class="fa fa-file-text-o"></i>
+                {{ '템플릿 편집' if template else '새 템플릿 생성' }}
+            </h2>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                <i class="fa fa-arrow-left"></i>
+                목록으로
+            </a>
+        </div>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('save_template_route') }}">
+    <input type="hidden" name="template_id" value="{{ template_id if template else '' }}">
+
+    <div class="row row-cards">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">기본 정보</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">
+                                <i class="fa fa-header"></i>
+                                템플릿 제목
+                            </label>
+                            <input type="text" name="title" required value="{{ template.title if template else '' }}" class="form-control" placeholder="템플릿 제목을 입력하세요">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">
+                                <i class="fa fa-envelope"></i>
+                                메일 제목
+                            </label>
+                            <input type="text" name="subject" required value="{{ template.subject if template else '' }}" class="form-control" placeholder="메일 제목을 입력하세요">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="fa fa-user"></i>
+                                발신자 이메일
+                            </label>
+                            <input type="email" name="from_email" value="{{ template.from_email if template else '' }}" class="form-control" placeholder="sender@example.com (비워두면 설정의 발신자 이메일 사용)">
+                            <div class="form-hint">
+                                <i class="fa fa-info-circle"></i>
+                                이 템플릿에만 사용할 발신자 이메일입니다. 비워두면 설정의 기본 발신자 이메일을 사용합니다.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fa fa-code"></i>
+                        HTML 내용
+                    </h3>
+                    <div class="card-actions">
+                        <div class="btn-list">
+                            <button type="button" onclick="toggleView()" class="btn btn-outline-secondary btn-sm">
+                                <i class="fa fa-external-link"></i>
+                                새 창 미리보기
+                            </button>
+                            <button type="button" onclick="insertSampleTemplate()" class="btn btn-success btn-sm">
+                                <i class="fa fa-magic"></i>
+                                샘플 템플릿
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="editor-container">
+                        <textarea name="html_content" id="html-editor" style="display:none;">{{ template.html_content if template else '' }}</textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fa fa-users"></i>
+                        기본 수신자
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <label class="form-label">기본 수신자 목록 (한 줄에 하나씩)</label>
+                    <textarea name="recipients" rows="4" class="form-control" placeholder="example1@email.com&#10;example2@email.com&#10;example3@email.com">{{ '\n'.join(template.recipients) if template else '' }}</textarea>
+                    <div class="form-hint mt-2">
+                        <i class="fa fa-info-circle"></i>
+                        여기에 입력된 수신자는 발송 시 기본으로 표시되며, 수정 가능합니다.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="d-flex justify-content-end gap-2">
+                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">취소</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa fa-save"></i>
+                    저장
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<script>
+    let editor;
+    let isPreviewMode = false;
+
+    // CodeMirror 초기화
+    document.addEventListener('DOMContentLoaded', function() {
+        editor = CodeMirror.fromTextArea(document.getElementById('html-editor'), {
+            mode: 'htmlmixed',
+            theme: 'monokai',
+            lineNumbers: true,
+            lineWrapping: true,
+            autoCloseTags: true,
+            autoCloseBrackets: true
+        });
+
+        // 에디터 내용 변경 시 미리보기 업데이트
+        editor.on('change', function() {
+            if (isPreviewMode) {
+                updatePreview();
+            }
+        });
+
+        // 초기 상태는 에디터
+        document.getElementById('html-editor').parentElement.style.display = 'block';
+        const previewContainer = document.getElementById('preview-container');
+        if (previewContainer) {
+            previewContainer.style.display = 'none';
+        }
+        
+        // 템플릿이 있으면 초기 내용 설정
+        if (editor.getValue().trim() === '') {
+            const initialContent = document.querySelector('textarea[name="html_content"]').value;
+            if (initialContent) {
+                editor.setValue(initialContent);
+            }
+        }
+    });
+
+    function toggleView() {
+        // 그냥 미리보기 새 창 열기
+        updatePreview();
+    }
+
+    function updatePreview() {
+        // 새 창으로 미리보기
+        const htmlContent = editor.getValue();
+        
+        if (htmlContent.trim()) {
+            const previewWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+            previewWindow.document.write(htmlContent);
+            previewWindow.document.close();
+            console.log('Preview opened in new window');
+        } else {
+            alert('HTML 내용이 없습니다.');
+        }
+    }
+
+    function insertSampleTemplate() {
+        const sampleTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>샘플 메일</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f4f4f4;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px;
+        }
+        .content {
+            padding: 20px 0;
+        }
+        .footer {
+            background-color: #f4f4f4;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>샘플 메일 제목</h1>
+    </div>
+    
+    <div class="content">
+        <h2>안녕하세요!</h2>
+        <p>이것은 샘플 이메일 템플릿입니다. 원하는 내용으로 자유롭게 수정하세요.</p>
+        <p>HTML 태그를 사용하여 다양한 스타일을 적용할 수 있습니다.</p>
+        
+        <h3>주요 특징</h3>
+        <ul>
+            <li>HTML 편집기 지원</li>
+            <li>실시간 미리보기</li>
+            <li>다중 수신자 발송</li>
+            <li>발송 결과 추적</li>
+        </ul>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="#" class="button">자세히 보기</a>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>감사합니다.<br>웹메일 발송 시스템</p>
+    </div>
+</body>
+</html>`;
+        
+        editor.setValue(sampleTemplate.trim());
+        if (isPreviewMode) {
+            updatePreview();
+        }
+    }
+</script>
+{% endblock %}

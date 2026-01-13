@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}템플릿 목록 - 웹메일 발송 시스템{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h2 class="text-2xl font-bold text-gray-800">
+        <i class="fas fa-file-alt mr-2"></i>메일 템플릿 목록
+    </h2>
+    <a href="{{ url_for('new_template') }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+        <i class="fas fa-plus mr-2"></i>새 템플릿 생성
+    </a>
+</div>
+
+{% if templates %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for template in templates %}
+            <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-lg font-semibold text-gray-800">{{ template.title }}</h3>
+                    <span class="text-sm text-gray-500">
+                        <i class="fas fa-users mr-1"></i>{{ template.recipients|length }}명
+                    </span>
+                </div>
+                <p class="text-gray-600 text-sm mb-4">
+                    <i class="fas fa-calendar mr-1"></i>
+                    생성일: {{ template.created_at[:10] if template.created_at else '' }}
+                </p>
+                <div class="flex space-x-2">
+                    <a href="{{ url_for('edit_template', template_id=template.id) }}" 
+                       class="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded text-center hover:bg-gray-200 transition">
+                        <i class="fas fa-edit mr-1"></i>편집
+                    </a>
+                    <a href="{{ url_for('send_page', template_id=template.id) }}" 
+                       class="flex-1 bg-blue-600 text-white px-3 py-2 rounded text-center hover:bg-blue-700 transition">
+                        <i class="fas fa-paper-plane mr-1"></i>발송
+                    </a>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <i class="fas fa-inbox text-6xl text-gray-300 mb-4"></i>
+        <p class="text-gray-500 text-lg mb-4">생성된 템플릿이 없습니다.</p>
+        <a href="{{ url_for('new_template') }}" class="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 transition inline-block">
+            <i class="fas fa-plus mr-2"></i>첫 템플릿 생성하기
+        </a>
+    </div>
+{% endif %}
+{% endblock %}

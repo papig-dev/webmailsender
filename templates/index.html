@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}템플릿 목록 - 웹메일 발송 시스템{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                <i class="fa fa-file-text-o"></i>
+                메일 템플릿 목록
+            </h2>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <div class="btn-list">
+                <a href="{{ url_for('new_template') }}" class="btn btn-primary">
+                    <i class="fa fa-plus"></i>
+                    새 템플릿 생성
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if templates %}
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>제목</th>
+                        <th class="text-end">수신자</th>
+                        <th class="d-none d-md-table-cell">생성일</th>
+                        <th class="w-1"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for template in templates %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold text-truncate" style="max-width: 520px;">
+                                    {{ template.title }}
+                                    <span class="text-secondary ms-2" style="font-size: 0.85rem;">#{{ template.id[:8] }}</span>
+                                </div>
+                            </td>
+                            <td class="text-end">{{ template.recipients|length }}명</td>
+                            <td class="d-none d-md-table-cell text-secondary">{{ template.created_at[:10] if template.created_at else '' }}</td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <a href="{{ url_for('edit_template', template_id=template.id) }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="fa fa-edit"></i>
+                                        편집
+                                    </a>
+                                    <a href="{{ url_for('send_page', template_id=template.id) }}" class="btn btn-sm btn-primary">
+                                        <i class="fa fa-paper-plane"></i>
+                                        발송
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% else %}
+    <div class="empty">
+        <div class="empty-icon">
+            <i class="fa fa-inbox"></i>
+        </div>
+        <p class="empty-title">생성된 템플릿이 없습니다.</p>
+        <div class="empty-action">
+            <a href="{{ url_for('new_template') }}" class="btn btn-primary">
+                <i class="fa fa-plus"></i>
+                첫 템플릿 생성하기
+            </a>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

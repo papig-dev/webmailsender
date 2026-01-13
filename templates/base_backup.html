@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}웹메일 발송 시스템{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
+    <style>
+        .CodeMirror {
+            height: 500px;
+            font-size: 14px;
+        }
+        .preview-frame {
+            height: 500px;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            width: 100%;
+            background: white;
+        }
+        #preview-container {
+            min-height: 500px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-blue-600 text-white shadow-lg">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center space-x-4">
+                    <i class="fas fa-envelope text-2xl"></i>
+                    <h1 class="text-xl font-bold">웹메일 발송 시스템</h1>
+                </div>
+                <div class="flex space-x-6">
+                    <a href="{{ url_for('index') }}" class="hover:text-blue-200 transition">
+                        <i class="fas fa-home mr-1"></i>홈
+                    </a>
+                    <a href="{{ url_for('results') }}" class="hover:text-blue-200 transition">
+                        <i class="fas fa-chart-bar mr-1"></i>발송 결과
+                    </a>
+                    <a href="{{ url_for('settings') }}" class="hover:text-blue-200 transition">
+                        <i class="fas fa-cog mr-1"></i>설정
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-8">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-gray-800 text-white py-4 mt-8">
+        <div class="container mx-auto px-4 text-center">
+            <p>웹메일 발송 시스템</p>
+        </div>
+    </footer>
+
+    <script>
+        // 공통 함수들
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showAlert(message, type = 'success') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `${type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'} px-4 py-3 rounded mb-4`;
+            alertDiv.textContent = message;
+            document.querySelector('main').insertBefore(alertDiv, document.querySelector('main').firstChild);
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+    </script>
+</body>
+</html>

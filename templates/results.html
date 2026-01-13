@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}발송 결과 - 웹메일 발송 시스템{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                <i class="fa fa-bar-chart"></i>
+                발송 결과
+            </h2>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                <i class="fa fa-arrow-left"></i>
+                홈으로
+            </a>
+        </div>
+    </div>
+</div>
+
+{% if results %}
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>템플릿 제목</th>
+                        <th>발송 일시</th>
+                        <th>수신자 수</th>
+                        <th>성공</th>
+                        <th>실패</th>
+                        <th>상태</th>
+                        <th class="w-1">작업</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                        <tr>
+                            <td class="fw-semibold">{{ result.title }}</td>
+                            <td class="text-secondary">{{ result.sent_at[:10] }} {{ result.sent_at[11:19] }}</td>
+                            <td>{{ result.recipients|length }}명</td>
+                            <td><span class="text-success fw-semibold">{{ result.success_count }}</span></td>
+                            <td><span class="text-danger fw-semibold">{{ result.fail_count }}</span></td>
+                            <td>
+                                {% if result.fail_count == 0 %}
+                                    <span class="badge bg-success">전체 성공</span>
+                                {% elif result.success_count == 0 %}
+                                    <span class="badge bg-danger">전체 실패</span>
+                                {% else %}
+                                    <span class="badge bg-warning">부분 성공</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('view_result', result_id=result.id) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fa fa-eye"></i>
+                                    상세 보기
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% else %}
+    <div class="empty">
+        <div class="empty-icon">
+            <i class="fa fa-bar-chart"></i>
+        </div>
+        <p class="empty-title">발송 결과가 없습니다.</p>
+        <div class="empty-action">
+            <a href="{{ url_for('index') }}" class="btn btn-primary">
+                <i class="fa fa-paper-plane"></i>
+                메일 발송하기
+            </a>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

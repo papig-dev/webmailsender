@@ -1,0 +1,13 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+*.log
+.venv/
+venv/
+.env
+
+# App runtime data (may contain secrets)
+data/config.json
+data/results/
+data/templates/
+backup/

@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}메일 발송 - {{ template.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                <i class="fa fa-paper-plane"></i>
+                메일 발송
+            </h2>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                <i class="fa fa-arrow-left"></i>
+                목록으로
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row row-cards">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">템플릿 정보</h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <div class="text-secondary">제목</div>
+                        <div class="fw-semibold">{{ template.title }}</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <div class="text-secondary">메일 제목</div>
+                        <div class="fw-semibold">{{ template.subject }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="text-secondary">발신자</div>
+                        <div class="fw-semibold">{{ template.from_email if template.from_email else '설정의 기본 발신자 이메일' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <form id="sendForm">
+            <input type="hidden" name="template_id" value="{{ template_id }}">
+
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fa fa-users"></i>
+                        수신자
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <label class="form-label" for="recipients">수신자 목록 (한 줄에 하나씩)</label>
+                    <textarea name="recipients" id="recipients" rows="8" required class="form-control" placeholder="example1@email.com&#10;example2@email.com&#10;example3@email.com">{{ '\n'.join(template.recipients) }}</textarea>
+
+                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mt-3">
+                        <div class="text-secondary">
+                            <i class="fa fa-info-circle"></i>
+                            총 <span id="recipientCount">{{ template.recipients|length }}</span>명
+                        </div>
+                        <button type="button" onclick="validateRecipients()" class="btn btn-success btn-sm">
+                            <i class="fa fa-check"></i>
+                            유효성 검사
+                        </button>
+                    </div>
+
+                    <div class="row g-2 mt-3">
+                        <div class="col-12">
+                            <button type="button" onclick="sendTestEmail()" class="btn btn-warning">
+                                <i class="fa fa-flask"></i>
+                                테스트 발송
+                            </button>
+                            <div class="form-hint mt-2">
+                                설정에 저장된 “테스트 수신자 이메일”로 테스트 메일을 발송합니다.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fa fa-eye"></i>
+                        미리보기
+                    </h3>
+                    <div class="card-actions text-secondary">실제 발송될 메일의 모습입니다</div>
+                </div>
+                <div class="card-body">
+                    <iframe id="previewFrame" class="preview-frame"></iframe>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <a href="{{ url_for('edit_template', template_id=template_id) }}" class="btn btn-outline-secondary">
+                    <i class="fa fa-edit"></i>
+                    템플릿 수정
+                </a>
+                <button type="submit" id="sendButton" class="btn btn-primary">
+                    <i class="fa fa-paper-plane"></i>
+                    메일 발송
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal modal-blur fade" id="resultModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">발송 결과</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="resultContent"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+                <button type="button" onclick="viewDetail()" id="viewDetailBtn" class="btn btn-primary d-none">상세 보기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal modal-blur fade" id="loadingOverlay" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="mt-3 fw-semibold">메일 발송 중...</div>
+                <div class="text-secondary mt-1">잠시만 기다려주세요.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentResultId = null;
+
+    function showModal(modalEl) {
+        if (window.bootstrap && window.bootstrap.Modal) {
+            const m = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+            m.show();
+            return;
+        }
+
+        modalEl.classList.add('show');
+        modalEl.style.display = 'block';
+        modalEl.removeAttribute('aria-hidden');
+        document.body.classList.add('modal-open');
+    }
+
+    function hideModal(modalEl) {
+        if (window.bootstrap && window.bootstrap.Modal) {
+            const m = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+            m.hide();
+            return;
+        }
+
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+    }
+
+    // 페이지 로드 시 미리보기 표시
+    document.addEventListener('DOMContentLoaded', function() {
+        updatePreview();
+        updateRecipientCount();
+        
+        // 수신자 목록 변경 시 카운트 업데이트
+        document.getElementById('recipients').addEventListener('input', updateRecipientCount);
+    });
+
+    function updatePreview() {
+        const iframe = document.getElementById('previewFrame');
+        const htmlContent = `{{ template.html_content|safe }}`;
+        iframe.srcdoc = htmlContent;
+    }
+
+    function updateRecipientCount() {
+        const textarea = document.getElementById('recipients');
+        const emails = textarea.value.split('\n').filter(email => email.trim());
+        document.getElementById('recipientCount').textContent = emails.length;
+    }
+
+    function validateRecipients() {
+        const textarea = document.getElementById('recipients');
+        const emails = textarea.value.split('\n').filter(email => email.trim());
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        
+        let validCount = 0;
+        let invalidEmails = [];
+        
+        emails.forEach(email => {
+            if (emailRegex.test(email.trim())) {
+                validCount++;
+            } else {
+                invalidEmails.push(email.trim());
+            }
+        });
+        
+        if (invalidEmails.length === 0) {
+            showAlert(`모든 ${validCount}개의 이메일 주소가 유효합니다.`, 'success');
+        } else {
+            showAlert(`${invalidEmails.length}개의 잘못된 이메일 주소가 있습니다:\n${invalidEmails.join(', ')}`, 'error');
+        }
+    }
+
+    // 테스트 발송
+    async function sendTestEmail() {
+        const configuredTestRecipientEmail = `{{ (config.test_recipient_email or '')|e }}`;
+        const recipients = configuredTestRecipientEmail
+            .split(/[\n,;]+/)
+            .map(v => v.trim())
+            .filter(Boolean);
+
+        if (recipients.length === 0) {
+            showAlert('설정에서 테스트 수신자 이메일을 먼저 입력해주세요.', 'error');
+            return;
+        }
+
+        const previewList = recipients.slice(0, 5).join(', ') + (recipients.length > 5 ? ` 외 ${recipients.length - 5}명` : '');
+
+        if (!confirm(`총 ${recipients.length}명에게 테스트 메일을 발송하시겠습니까?\n${previewList}`)) {
+            return;
+        }
+        
+        // 로딩 표시
+        const loadingModalEl = document.getElementById('loadingOverlay');
+        showModal(loadingModalEl);
+        
+        try {
+            const formData = new FormData();
+            formData.append('template_id', '{{ template_id }}');
+            // test_email은 서버에서 설정값으로 대체되므로 보내지 않습니다.
+            
+            const response = await fetch('{{ url_for("send_test_email") }}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            // 로딩 제거
+            hideModal(loadingModalEl);
+            
+            if (response.ok) {
+                showAlert(result.message, 'success');
+            } else {
+                showAlert(result.error || '테스트 발송 실패', 'error');
+            }
+        } catch (error) {
+            hideModal(loadingModalEl);
+            showAlert('오류가 발생했습니다: ' + error.message, 'error');
+        }
+    }
+
+    // 폼 제출
+    document.getElementById('sendForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const recipients = formData.get('recipients').split('\n').filter(email => email.trim());
+        
+        if (recipients.length === 0) {
+            showAlert('수신자를 입력해주세요.', 'error');
+            return;
+        }
+        
+        if (!confirm(`총 ${recipients.length}명에게 메일을 발송하시겠습니까?`)) {
+            return;
+        }
+        
+        // 로딩 표시
+        const loadingModalEl = document.getElementById('loadingOverlay');
+        showModal(loadingModalEl);
+        document.getElementById('sendButton').disabled = true;
+        
+        try {
+            const response = await fetch('{{ url_for("send_email") }}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            // 로딩 숨기기
+            hideModal(loadingModalEl);
+            document.getElementById('sendButton').disabled = false;
+            
+            if (response.ok) {
+                showResult(result);
+            } else {
+                showAlert(result.error || '발송 실패', 'error');
+            }
+        } catch (error) {
+            hideModal(loadingModalEl);
+            document.getElementById('sendButton').disabled = false;
+            showAlert('오류가 발생했습니다: ' + error.message, 'error');
+        }
+    });
+
+    function showResult(result) {
+        currentResultId = result.result_id;
+        const content = document.getElementById('resultContent');
+        
+        let html = `
+            <div class="d-grid gap-2">
+                <div><strong>성공:</strong> ${result.success_count}명</div>
+                <div><strong>실패:</strong> ${result.fail_count}명</div>
+        `;
+        
+        if (result.errors && result.errors.length > 0) {
+            html += `
+                <div class="mt-3">
+                    <div class="fw-semibold text-danger">실패한 수신자:</div>
+                    <ul class="mt-2" style="max-height: 160px; overflow-y: auto;">
+            `;
+            result.errors.forEach(error => {
+                html += `<li>${error}</li>`;
+            });
+            html += '</ul></div>';
+        }
+        
+        html += '</div>';
+        content.innerHTML = html;
+        
+        if (result.success_count > 0) {
+            document.getElementById('viewDetailBtn').classList.remove('d-none');
+        } else {
+            document.getElementById('viewDetailBtn').classList.add('d-none');
+        }
+
+        const resultModalEl = document.getElementById('resultModal');
+        showModal(resultModalEl);
+    }
+
+    function viewDetail() {
+        if (currentResultId) {
+            window.location.href = `/result/${currentResultId}`;
+        }
+    }
+
+</script>
+{% endblock %}

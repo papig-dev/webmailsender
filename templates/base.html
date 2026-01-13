@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}웹메일 발송 시스템{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='tabler/css/tabler.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendors/font-awesome/css/font-awesome.min.css') }}">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='codemirror/codemirror.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='codemirror/theme/monokai.min.css') }}">
+    <style>
+        .CodeMirror {
+            height: 500px;
+            font-size: 14px;
+        }
+        .preview-frame {
+            height: 500px;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            width: 100%;
+            background: white;
+        }
+        #preview-container {
+            min-height: 500px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="navbar navbar-expand-md navbar-light d-print-none">
+            <div class="container-xl">
+                <a class="navbar-brand" href="{{ url_for('index') }}">
+                    웹메일 발송 시스템
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu" aria-controls="navbar-menu" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbar-menu">
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('index') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="fa fa-home"></i></span>
+                                <span class="nav-link-title">홈</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('results') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="fa fa-bar-chart"></i></span>
+                                <span class="nav-link-title">발송 결과</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('settings') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="fa fa-cog"></i></span>
+                                <span class="nav-link-title">설정</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </header>
+
+        <div class="page-wrapper">
+            <div id="page-content" class="container-xl py-4">
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-success alert-dismissible" role="alert">
+                                <div class="d-flex">
+                                    <div>{{ message }}</div>
+                                    <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+
+            <footer class="footer footer-transparent d-print-none">
+                <div class="container-xl">
+                    <div class="text-center">웹메일 발송 시스템</div>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='tabler/js/tabler.min.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='codemirror/codemirror.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='codemirror/mode/xml/xml.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='codemirror/mode/htmlmixed/htmlmixed.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='codemirror/addon/edit/closebrackets.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='codemirror/addon/edit/closetag.min.js') }}"></script>
+
+    <script>
+        // 공통 함수들
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showAlert(message, type = 'success') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible`;
+            alertDiv.setAttribute('role', 'alert');
+            alertDiv.innerHTML = `<div class="d-flex"><div>${message}</div><button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+            document.querySelector('#page-content').insertBefore(alertDiv, document.querySelector('#page-content').firstChild);
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+    </script>
+</body>
+</html>

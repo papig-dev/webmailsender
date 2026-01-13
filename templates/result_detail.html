@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}발송 결과 상세 - {{ result.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                <i class="fa fa-file-text-o"></i>
+                발송 결과 상세
+            </h2>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <a href="{{ url_for('results') }}" class="btn btn-outline-secondary">
+                <i class="fa fa-arrow-left"></i>
+                목록으로
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row row-cards">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">기본 정보</h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <div class="text-secondary">템플릿 제목</div>
+                        <div class="fw-semibold">{{ result.title }}</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <div class="text-secondary">발송 일시</div>
+                        <div class="fw-semibold">{{ result.sent_at[:10] }} {{ result.sent_at[11:19] }}</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <div class="text-secondary">총 수신자</div>
+                        <div class="fw-semibold">{{ result.recipients|length }}명</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <div class="text-secondary">발송 상태</div>
+                        <div class="fw-semibold">
+                            {% if result.fail_count == 0 %}
+                                <span class="badge bg-success">전체 성공</span>
+                            {% elif result.success_count == 0 %}
+                                <span class="badge bg-danger">전체 실패</span>
+                            {% else %}
+                                <span class="badge bg-warning">부분 성공</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">발송 통계</h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <div class="card card-sm bg-success-lt">
+                            <div class="card-body">
+                                <div class="h1 m-0 text-success">{{ result.success_count }}</div>
+                                <div class="text-secondary mt-1">성공</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="card card-sm bg-danger-lt">
+                            <div class="card-body">
+                                <div class="h1 m-0 text-danger">{{ result.fail_count }}</div>
+                                <div class="text-secondary mt-1">실패</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="card card-sm bg-primary-lt">
+                            <div class="card-body">
+                                <div class="h1 m-0 text-primary">
+                                    {% if result.recipients|length > 0 %}
+                                        {{ "%.1f"|format((result.success_count / (result.recipients|length)) * 100) }}%
+                                    {% else %}
+                                        0%
+                                    {% endif %}
+                                </div>
+                                <div class="text-secondary mt-1">성공률</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">수신자 목록</h3>
+            </div>
+            <div class="card-body">
+                <div class="list-group" style="max-height: 24rem; overflow-y: auto;">
+                    {% for recipient in result.recipients %}
+                        {% set is_success = true %}
+                        {% for error in result.errors %}
+                            {% if error.startswith(recipient + ":") %}
+                                {% set is_success = false %}
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between gap-2">
+                                        <div class="fw-semibold">{{ recipient }}</div>
+                                        <div class="text-danger">{{ error.split(":")[1] }}</div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                        {% if is_success %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center gap-2">
+                                    <div class="fw-semibold">{{ recipient }}</div>
+                                    <div class="text-success">
+                                        <i class="fa fa-check-circle"></i>
+                                        발송 성공
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if result.errors %}
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title text-danger">실패 상세 정보</h3>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        {% for error in result.errors %}
+                            <div class="alert alert-danger" role="alert">
+                                <code>{{ error }}</code>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

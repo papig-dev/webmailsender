@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}설정 - 웹메일 발송 시스템{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                <i class="fa fa-cog"></i>
+                SMTP 설정
+            </h2>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                <i class="fa fa-arrow-left"></i>
+                홈으로
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row row-cards">
+    <div class="col-12 col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <div class="alert alert-info" role="alert">
+                    <div class="d-flex">
+                        <div>
+                            <div class="fw-semibold">
+                                <i class="fa fa-info-circle"></i>
+                                SMTP 설정 안내
+                            </div>
+                            <div class="mt-1">
+                                메일 발송을 위해 SMTP 서버 정보를 설정해야 합니다.<br>
+                                - <strong>MailHog (테스트용)</strong>: localhost, 포트 1025, 아이디/비밀번호 없음<br>
+                                - <strong>Gmail</strong>: smtp.gmail.com, 포트 587, 앱 비밀번호 필요
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <form method="POST" action="{{ url_for('save_settings') }}">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="fa fa-server"></i>
+                                SMTP 서버
+                            </label>
+                            <input type="text" name="smtp_server" required value="{{ config.smtp_server }}" class="form-control" placeholder="smtp.gmail.com">
+                            <div class="form-hint">Gmail: smtp.gmail.com, Naver: smtp.naver.com</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="fa fa-plug"></i>
+                                SMTP 포트
+                            </label>
+                            <input type="number" name="smtp_port" required value="{{ config.smtp_port }}" class="form-control" placeholder="587">
+                            <div class="form-hint">일반적으로 587 (TLS) 또는 465 (SSL)</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="fa fa-user"></i>
+                                SMTP 아이디
+                            </label>
+                            <input type="email" name="smtp_user" value="{{ config.smtp_user }}" class="form-control" placeholder="MailHog는 비워두세요">
+                            <div class="form-hint">MailHog 사용 시 비워두세요</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="fa fa-lock"></i>
+                                SMTP 비밀번호
+                            </label>
+                            <input type="password" name="smtp_password" value="{{ config.smtp_password }}" class="form-control" placeholder="MailHog는 비워두세요">
+                            <div class="form-hint">
+                                Gmail 사용 시 <a href="https://myaccount.google.com/apppasswords" target="_blank">앱 비밀번호</a>를 발급받으세요
+                                <br>
+                                MailHog 사용 시 비워두세요
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="fa fa-envelope"></i>
+                                발신자 이메일
+                            </label>
+                            <input type="email" name="from_email" required value="{{ config.from_email }}" class="form-control" placeholder="your-email@gmail.com">
+                            <div class="form-hint">메일을 발송할 때 표시될 발신자 주소</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="fa fa-flask"></i>
+                                테스트 수신자 이메일
+                            </label>
+                            <textarea name="test_recipient_email" class="form-control" rows="3" placeholder="test1@example.com&#10;test2@example.com">{{ config.test_recipient_email }}</textarea>
+                            <div class="form-hint">여러 개 입력 가능: 한 줄에 하나씩 또는 쉼표(,) / 세미콜론(;)으로 구분. 메일 발송 화면에서 “테스트 발송” 버튼을 누르면 항상 이 목록으로 발송됩니다.</div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="d-flex justify-content-end gap-2">
+                                <button type="button" onclick="testConnection()" class="btn btn-success">
+                                    <i class="fa fa-plug"></i>
+                                    연결 테스트
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fa fa-save"></i>
+                                    저장
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fa fa-google"></i>
+                    Gmail 앱 비밀번호 설정 방법
+                </h3>
+            </div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    <li>Google 계정에 로그인합니다.</li>
+                    <li><a href="https://myaccount.google.com/security" target="_blank">Google 계정 보안</a> 페이지로 이동합니다.</li>
+                    <li>'2단계 인증'이 꺼져 있다면 켭니다.</li>
+                    <li>'앱 비밀번호' 섹션으로 이동합니다.</li>
+                    <li>'앱 선택'에서 '기타'를 선택하고 이름을 입력합니다.</li>
+                    <li>생성된 16자리 비밀번호를 복사하여 SMTP 비밀번호에 입력합니다.</li>
+                </ol>
+                <div class="text-secondary mt-3" style="font-size: 0.85rem;">
+                    참고: 앱 비밀번호는 Google 계정 비밀번호와 다릅니다.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function testConnection() {
+        const form = document.querySelector('form');
+        const formData = new FormData(form);
+        
+        // 임시로 테스트 요청 보내기
+        fetch('/test-smtp', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('SMTP 연결에 성공했습니다!', 'success');
+            } else {
+                showAlert('SMTP 연결 실패: ' + data.error, 'error');
+            }
+        })
+        .catch(error => {
+            showAlert('테스트 중 오류 발생: ' + error.message, 'error');
+        });
+    }
+</script>
+{% endblock %}
