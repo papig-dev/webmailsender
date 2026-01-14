@@ -13,7 +13,8 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
 # 데이터 저장을 위한 디렉토리
-DATA_DIR = 'data'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 TEMPLATES_DIR = os.path.join(DATA_DIR, 'templates')
 RESULTS_DIR = os.path.join(DATA_DIR, 'results')
 DB_FILE = os.path.join(DATA_DIR, 'app.db')
@@ -279,17 +280,25 @@ def load_config():
         'test_recipient_email': ''
     }
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
             for k, v in defaults.items():
                 config.setdefault(k, v)
             return config
+        except Exception:
+            return defaults
     return defaults
 
 def save_config(config):
     """SMTP 설정 저장"""
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp_path = f"{CONFIG_FILE}.tmp"
+    with open(tmp_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, CONFIG_FILE)
 
 
 def parse_email_list(value: str) -> list[str]:
@@ -673,16 +682,26 @@ def settings():
 @app.route('/settings/save', methods=['POST'])
 def save_settings():
     """설정 저장"""
+    smtp_port_raw = (request.form.get('smtp_port', '') or '').strip()
+    try:
+        smtp_port = int(smtp_port_raw) if smtp_port_raw else 587
+    except ValueError:
+        flash('SMTP 포트 값이 올바르지 않습니다.')
+        return redirect(url_for('settings'))
+
     config = {
-        'smtp_server': request.form.get('smtp_server'),
-        'smtp_port': int(request.form.get('smtp_port', 587)),
-        'smtp_user': request.form.get('smtp_user'),
-        'smtp_password': request.form.get('smtp_password'),
-        'from_email': request.form.get('from_email'),
+        'smtp_server': (request.form.get('smtp_server') or '').strip(),
+        'smtp_port': smtp_port,
+        'smtp_user': (request.form.get('smtp_user') or '').strip(),
+        'smtp_password': request.form.get('smtp_password') or '',
+        'from_email': (request.form.get('from_email') or '').strip(),
         'test_recipient_email': request.form.get('test_recipient_email', '').strip()
     }
-    save_config(config)
-    flash('설정이 저장되었습니다.')
+    try:
+        save_config(config)
+        flash('설정이 저장되었습니다.')
+    except Exception as e:
+        flash(f'설정 저장 중 오류가 발생했습니다: {str(e)}')
     return redirect(url_for('settings'))
 
 if __name__ == '__main__':
