@@ -1,0 +1,16 @@
+[project]
+name = "webmailsender"
+version = "0.1.0"
+description = "HTML 이메일 템플릿을 관리하고 다중 수신자에게 메일을 발송하는 웹 기반 시스템"
+requires-python = ">=3.8"
+dependencies = [
+  "Flask==2.3.3",
+  "Jinja2==3.1.2",
+  "Werkzeug==2.3.7",
+  "redis==5.0.1",
+  "rq==1.16.2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

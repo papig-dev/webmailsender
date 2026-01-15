@@ -16,6 +16,12 @@
                 <i class="fa fa-arrow-left"></i>
                 목록으로
             </a>
+            {% if result.status in ['queued', 'running'] %}
+                <button type="button" class="btn btn-danger" onclick="cancelRun()">
+                    <i class="fa fa-ban"></i>
+                    발송 취소
+                </button>
+            {% endif %}
             {% if result.can_retry %}
                 <button type="button" class="btn btn-warning" onclick="retryRun()">
                     <i class="fa fa-refresh"></i>
@@ -44,24 +50,34 @@
                     </div>
                     <div class="col-12 col-md-6">
                         <div class="text-secondary">총 수신자</div>
-                        <div class="fw-semibold">{{ (result.total_count if result.total_count is defined else (result.recipients|length)) }}명</div>
+                        <div class="fw-semibold"><span id="totalCount">{{ (result.total_count if result.total_count is defined else (result.recipients|length)) }}</span>명</div>
                     </div>
                     {% if result.pending_count is defined %}
                         <div class="col-12 col-md-6">
                             <div class="text-secondary">미발송</div>
-                            <div class="fw-semibold">{{ result.pending_count }}명</div>
+                            <div class="fw-semibold"><span id="pendingCount">{{ result.pending_count }}</span>명</div>
                         </div>
                     {% endif %}
                     <div class="col-12 col-md-6">
                         <div class="text-secondary">발송 상태</div>
                         <div class="fw-semibold">
-                            {% if result.fail_count == 0 %}
-                                <span class="badge bg-success">전체 성공</span>
-                            {% elif result.success_count == 0 %}
-                                <span class="badge bg-danger">전체 실패</span>
-                            {% else %}
-                                <span class="badge bg-warning">부분 성공</span>
-                            {% endif %}
+                            <span id="runStatusBadge">
+                                {% if result.status == 'queued' %}
+                                    <span class="badge bg-secondary">대기중</span>
+                                {% elif result.status == 'running' %}
+                                    <span class="badge bg-primary">발송중</span>
+                                {% elif result.status == 'cancel_requested' %}
+                                    <span class="badge bg-warning">취소 요청됨</span>
+                                {% elif result.status == 'canceled' %}
+                                    <span class="badge bg-dark">취소됨</span>
+                                {% elif result.fail_count == 0 %}
+                                    <span class="badge bg-success">전체 성공</span>
+                                {% elif result.success_count == 0 %}
+                                    <span class="badge bg-danger">전체 실패</span>
+                                {% else %}
+                                    <span class="badge bg-warning">부분 성공</span>
+                                {% endif %}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -79,7 +95,7 @@
                     <div class="col-12 col-md-4">
                         <div class="card card-sm bg-success-lt">
                             <div class="card-body">
-                                <div class="h1 m-0 text-success">{{ result.success_count }}</div>
+                                <div class="h1 m-0 text-success" id="successCount">{{ result.success_count }}</div>
                                 <div class="text-secondary mt-1">성공</div>
                             </div>
                         </div>
@@ -87,7 +103,7 @@
                     <div class="col-12 col-md-4">
                         <div class="card card-sm bg-danger-lt">
                             <div class="card-body">
-                                <div class="h1 m-0 text-danger">{{ result.fail_count }}</div>
+                                <div class="h1 m-0 text-danger" id="failCount">{{ result.fail_count }}</div>
                                 <div class="text-secondary mt-1">실패</div>
                             </div>
                         </div>
@@ -95,7 +111,7 @@
                     <div class="col-12 col-md-4">
                         <div class="card card-sm bg-primary-lt">
                             <div class="card-body">
-                                <div class="h1 m-0 text-primary">
+                                <div class="h1 m-0 text-primary" id="successRate">
                                     {% if result.recipients|length > 0 %}
                                         {{ "%.1f"|format((result.success_count / (result.recipients|length)) * 100) }}%
                                     {% else %}
@@ -172,8 +188,81 @@
 </div>
 
 <script>
+    const resultId = `{{ result.id }}`;
+
+    function statusBadgeHtml(status, successCount, failCount) {
+        if (status === 'queued') return '<span class="badge bg-secondary">대기중</span>';
+        if (status === 'running') return '<span class="badge bg-primary">발송중</span>';
+        if (status === 'cancel_requested') return '<span class="badge bg-warning">취소 요청됨</span>';
+        if (status === 'canceled') return '<span class="badge bg-dark">취소됨</span>';
+        if (status === 'failed') return '<span class="badge bg-danger">실패</span>';
+        if (status === 'finished') {
+            if (failCount === 0) return '<span class="badge bg-success">전체 성공</span>';
+            if (successCount === 0) return '<span class="badge bg-danger">전체 실패</span>';
+            return '<span class="badge bg-warning">부분 성공</span>';
+        }
+        return '<span class="badge bg-secondary">알 수 없음</span>';
+    }
+
+    function updateStatusDom(s) {
+        const total = s.total_count || 0;
+        const success = s.success_count || 0;
+        const fail = s.fail_count || 0;
+        const pending = s.pending_count || 0;
+
+        const totalEl = document.getElementById('totalCount');
+        const pendingEl = document.getElementById('pendingCount');
+        const successEl = document.getElementById('successCount');
+        const failEl = document.getElementById('failCount');
+        const rateEl = document.getElementById('successRate');
+        const badgeEl = document.getElementById('runStatusBadge');
+
+        if (totalEl) totalEl.textContent = total;
+        if (pendingEl) pendingEl.textContent = pending;
+        if (successEl) successEl.textContent = success;
+        if (failEl) failEl.textContent = fail;
+        if (rateEl) {
+            const denom = total > 0 ? total : 1;
+            rateEl.textContent = `${((success / denom) * 100).toFixed(1)}%`;
+        }
+        if (badgeEl) badgeEl.innerHTML = statusBadgeHtml(s.status, success, fail);
+    }
+
+    async function pollStatus() {
+        if (!resultId) return;
+        try {
+            const res = await fetch(`/result/${resultId}/status`);
+            const data = await res.json();
+            if (!res.ok) return;
+
+            updateStatusDom(data);
+
+            if (data.status && !['queued', 'running', 'cancel_requested'].includes(data.status)) {
+                setTimeout(() => window.location.reload(), 600);
+            }
+        } catch (e) {
+        }
+    }
+
+    async function cancelRun() {
+        if (!resultId) return;
+        if (!confirm('발송을 취소하시겠습니까? 이미 발송된 메일은 되돌릴 수 없습니다.')) return;
+
+        try {
+            const response = await fetch(`/result/${resultId}/cancel`, { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) {
+                showAlert(data.error || '취소 요청에 실패했습니다.', 'error');
+                return;
+            }
+            showAlert('취소 요청이 접수되었습니다.', 'success');
+            pollStatus();
+        } catch (e) {
+            showAlert('취소 요청 중 오류가 발생했습니다.', 'error');
+        }
+    }
+
     async function retryRun() {
-        const resultId = `{{ result.id }}`;
         if (!resultId) return;
 
         if (!confirm('미발송/실패 건만 재발송하시겠습니까? (이미 성공한 수신자는 제외됩니다)')) {
@@ -193,5 +282,13 @@
             showAlert('재발송 요청 중 오류가 발생했습니다.', 'error');
         }
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const status = `{{ result.status }}`;
+        if (['queued', 'running', 'cancel_requested'].includes(status)) {
+            pollStatus();
+            setInterval(pollStatus, 1500);
+        }
+    });
 </script>
 {% endblock %}

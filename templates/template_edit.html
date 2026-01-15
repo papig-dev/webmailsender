@@ -65,6 +65,62 @@
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">
+                        <i class="fa fa-picture-o"></i>
+                        인라인 이미지 (CID)
+                    </h3>
+                </div>
+                <div class="card-body">
+                    {% if template %}
+                        <div class="row g-3 align-items-end">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">CID 이름</label>
+                                <input id="cidName" type="text" class="form-control" placeholder="image1">
+                            </div>
+                            <div class="col-12 col-md-5">
+                                <label class="form-label">이미지 파일</label>
+                                <input id="cidFile" type="file" class="form-control" accept="image/*">
+                            </div>
+                            <div class="col-12 col-md-3">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="button" class="btn btn-primary w-100" onclick="uploadCidImage()">
+                                    <i class="fa fa-upload"></i>
+                                    업로드
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-hint mt-2">본문에서 <code>src=&quot;cid:image1&quot;</code> 처럼 사용합니다.</div>
+
+                        <div class="mt-4">
+                            <div class="table-responsive">
+                                <table class="table table-vcenter">
+                                    <thead>
+                                        <tr>
+                                            <th>CID</th>
+                                            <th>파일명</th>
+                                            <th>미리보기</th>
+                                            <th class="w-1"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="assetRows">
+                                        <tr>
+                                            <td colspan="4" class="text-secondary">로딩 중...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="text-secondary">먼저 템플릿을 저장한 후(템플릿 ID 생성) 인라인 이미지를 업로드할 수 있습니다.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
                         <i class="fa fa-code"></i>
                         HTML 내용
                     </h3>
@@ -156,7 +212,145 @@
                 editor.setValue(initialContent);
             }
         }
+
+        const templateId = `{{ template_id if template else '' }}`;
+        if (templateId) {
+            loadAssets();
+        }
+
+        const fileInput = document.getElementById('cidFile');
+        if (fileInput) {
+            fileInput.addEventListener('change', function() {
+                const cidInput = document.getElementById('cidName');
+                const current = (cidInput?.value || '').trim();
+                if (current) return;
+
+                const file = fileInput.files?.[0];
+                if (!file) return;
+
+                const name = file.name || '';
+                const stem = name.replace(/\.[^/.]+$/, '');
+                const suggested = stem.replace(/[^a-zA-Z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '');
+                if (cidInput && suggested) {
+                    cidInput.value = suggested;
+                }
+            });
+        }
     });
+
+    async function loadAssets() {
+        const templateId = `{{ template_id if template else '' }}`;
+        if (!templateId) return;
+
+        const tbody = document.getElementById('assetRows');
+        if (!tbody) return;
+
+        try {
+            const res = await fetch(`/template/${templateId}/assets`);
+            const data = await res.json();
+            const assets = data.assets || [];
+
+            if (assets.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-secondary">업로드된 이미지가 없습니다.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = assets.map(a => {
+                const cid = a.cid || '';
+                const filename = a.filename || '';
+                const imgUrl = `/template/${templateId}/assets/view/${encodeURIComponent(cid)}`;
+                return `
+                    <tr>
+                        <td><code>cid:${cid}</code></td>
+                        <td class="text-secondary">${filename}</td>
+                        <td>
+                            <img src="${imgUrl}" alt="${cid}" style="max-height: 44px; max-width: 120px;" class="rounded border" />
+                        </td>
+                        <td>
+                            <div class="btn-list flex-nowrap">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyCid('${cid}')">
+                                    <i class="fa fa-copy"></i>
+                                    복사
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteCid('${cid}')">
+                                    <i class="fa fa-trash"></i>
+                                    삭제
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="3" class="text-danger">목록 로딩 실패</td></tr>`;
+        }
+    }
+
+    async function uploadCidImage() {
+        const templateId = `{{ template_id if template else '' }}`;
+        if (!templateId) return;
+
+        const cidName = (document.getElementById('cidName')?.value || '').trim();
+        const fileInput = document.getElementById('cidFile');
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+            showAlert('업로드할 파일을 선택해주세요.', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        if (cidName) formData.append('cid', cidName);
+
+        try {
+            const res = await fetch(`/template/${templateId}/assets/upload`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok) {
+                showAlert(data.error || '업로드에 실패했습니다.', 'error');
+                return;
+            }
+            showAlert(`업로드 완료: cid:${data.cid}`, 'success');
+            document.getElementById('cidName').value = '';
+            fileInput.value = '';
+            await loadAssets();
+        } catch (e) {
+            showAlert('업로드 중 오류가 발생했습니다.', 'error');
+        }
+    }
+
+    async function deleteCid(cid) {
+        const templateId = `{{ template_id if template else '' }}`;
+        if (!templateId) return;
+
+        if (!confirm(`삭제하시겠습니까? (cid:${cid})`)) return;
+
+        const formData = new FormData();
+        formData.append('cid', cid);
+
+        try {
+            const res = await fetch(`/template/${templateId}/assets/delete`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok) {
+                showAlert(data.error || '삭제에 실패했습니다.', 'error');
+                return;
+            }
+            showAlert('삭제 완료', 'success');
+            await loadAssets();
+        } catch (e) {
+            showAlert('삭제 중 오류가 발생했습니다.', 'error');
+        }
+    }
+
+    async function copyCid(cid) {
+        const text = `cid:${cid}`;
+        try {
+            await navigator.clipboard.writeText(text);
+            showAlert(`복사됨: ${text}`, 'success');
+        } catch (e) {
+            alert(text);
+        }
+    }
 
     function toggleView() {
         // 그냥 미리보기 새 창 열기
@@ -166,10 +360,16 @@
     function updatePreview() {
         // 새 창으로 미리보기
         const htmlContent = editor.getValue();
+        const templateId = `{{ template_id if template else '' }}`;
+        let previewHtml = htmlContent;
+
+        if (templateId) {
+            previewHtml = previewHtml.replace(/cid:([a-zA-Z0-9_.-]+)/g, `/template/${templateId}/assets/view/$1`);
+        }
         
-        if (htmlContent.trim()) {
+        if (previewHtml.trim()) {
             const previewWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
-            previewWindow.document.write(htmlContent);
+            previewWindow.document.write(previewHtml);
             previewWindow.document.close();
             console.log('Preview opened in new window');
         } else {

@@ -1,0 +1,46 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
+  web:
+    build: .
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUE: webmailsender
+      PORT: "5001"
+      FLASK_DEBUG: "1"
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "5001:5001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+      - mailhog
+    restart: unless-stopped
+
+  worker:
+    build: .
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUE: webmailsender
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - mailhog
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["rq", "worker", "-u", "redis://redis:6379/0", "webmailsender"]
+    restart: unless-stopped

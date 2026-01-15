@@ -30,6 +30,33 @@ HTML 이메일 템플릿을 관리하고 다중 수신자에게 메일을 발송
    http://localhost:5001
    ```
 
+## Docker Compose로 실행하기 (권장)
+
+리눅스 환경에서 Docker만으로 `web`(Flask) / `worker`(RQ) / `redis` / `mailhog`를 함께 실행하는 구성이 포함되어 있습니다.
+
+1. **실행**
+   ```bash
+   docker compose up --build
+   ```
+
+2. **웹 UI 접속**
+   - `http://localhost:5001`
+
+3. **MailHog UI 접속(개발용 수신함)**
+   - `http://localhost:8025`
+
+4. **SMTP 설정(중요)**
+   Docker Compose로 실행 중일 때, 설정 화면에서 SMTP 서버는 컨테이너 네트워크 기준으로 입력해야 합니다.
+   - **SMTP 서버**: `mailhog`
+   - **포트**: `1025`
+   - **SMTP 아이디/비밀번호**: 비워두기
+   - **발신자 이메일**: 예) `test@localhost`
+
+5. **백그라운드 발송(RQ) 동작 방식**
+   - 발송 요청은 즉시 처리되지 않고, `redis` 큐에 적재된 뒤 `worker`가 처리합니다.
+   - 발송 결과 상세 화면에서 상태(`queued`/`running`/`finished`/`failed`/`canceled`)와 진행률을 확인할 수 있습니다.
+   - 발송 중에는 “발송 취소” 기능으로 중단 요청이 가능합니다.
+
 ## 개발 환경에서 MailHog로 테스트하기
 
 MailHog는 개발용 가짜 SMTP 서버로, 실제 메일을 외부로 발송하지 않고 웹 UI에서 수신함을 확인할 수 있습니다.
@@ -78,6 +105,25 @@ MailHog는 개발용 가짜 SMTP 서버로, 실제 메일을 외부로 발송하
 - [메일 발송] 버튼으로 발송 실행
 - 실시간 발송 결과 확인
 
+### 3-1. CID 인라인 이미지 사용 (템플릿별 이미지)
+
+CID 인라인 이미지는 HTML 본문에서 `cid:`로 참조되는 이미지를 메일에 첨부하여, 수신자 메일 클라이언트에서 본문 내 이미지로 표시되게 하는 방식입니다.
+
+1. **템플릿 편집 화면에서 이미지 업로드**
+   - 템플릿 편집 화면 하단의 CID 이미지 섹션에서 이미지를 업로드합니다.
+   - 업로드 시 지정한 CID가 `cid:` 참조 값이 됩니다.
+
+2. **HTML에서 참조**
+   - 예시:
+     ```html
+     <img src="cid:logo" alt="logo" />
+     ```
+
+3. **저장 위치/규칙**
+   - 업로드된 파일은 아래 위치에 저장됩니다.
+     - `data/assets/<template_id>/`
+   - 메일 발송 시 `cid:<CID>`로 참조되는 이미지가 없으면 발송 실패로 처리될 수 있습니다.
+
 ### 4. 발송 결과 확인
 - [발송 결과] 메뉴에서 모든 발송 내역 확인
 - 성공/실패 수 및 상세 정보 조회
@@ -99,7 +145,9 @@ webmailsender/
 │   └── settings.html     # 설정 페이지
 └── data/                 # 데이터 저장 디렉토리
     ├── config.json       # SMTP 설정
+    ├── app.db            # 발송 실행/수신자 상태(SQLite)
     ├── templates/        # 템플릿 데이터
+    ├── assets/           # 템플릿별 CID 인라인 이미지
     └── results/          # 발송 결과 데이터
 ```
 
@@ -112,8 +160,10 @@ webmailsender/
 
 ## 발송 결과 저장 방식
 
-- 발송 결과는 `data/results/*.json` 파일로 저장됩니다.
-- [발송 결과] 화면은 해당 JSON 파일들을 읽어서 목록/상세 화면을 구성합니다.
+- 발송 실행 상태/수신자별 전송 결과는 SQLite(`data/app.db`)에 저장됩니다.
+  - `send_runs`: 발송 실행 단위(상태/카운트/시간)
+  - `send_recipients`: 수신자별 상태(`pending`/`sent`/`failed`)
+- 일부 이전 데이터 호환을 위해 `data/results/*.json` 형식이 남아 있을 수 있습니다.
 
 ## 보안 주의사항
 
